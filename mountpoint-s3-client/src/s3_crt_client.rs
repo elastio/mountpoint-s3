@@ -319,6 +319,14 @@ impl S3CrtClient {
     pub fn event_loop_group(&self) -> EventLoopGroup {
         self.inner.event_loop_group.clone()
     }
+
+    fn request_path(key: &str, version: Option<&str>) -> String {
+        if let Some(version) = version {
+            format!("/{key}?versionId={version}")
+        } else {
+            format!("/{key}")
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -1499,9 +1507,10 @@ impl ObjectClient for S3CrtClient {
         &self,
         bucket: &str,
         key: &str,
+        version: Option<&str>,
         params: &GetObjectParams,
     ) -> ObjectClientResult<Self::GetObjectResponse, GetObjectError, Self::ClientError> {
-        self.get_object(bucket, key, params).await
+        self.get_object(bucket, key, version, params).await
     }
 
     async fn list_objects(
@@ -1520,9 +1529,10 @@ impl ObjectClient for S3CrtClient {
         &self,
         bucket: &str,
         key: &str,
+        version: Option<&str>,
         params: &HeadObjectParams,
     ) -> ObjectClientResult<HeadObjectResult, HeadObjectError, Self::ClientError> {
-        self.head_object(bucket, key, params).await
+        self.head_object(bucket, key, version, params).await
     }
 
     async fn put_object(

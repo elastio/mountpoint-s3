@@ -22,6 +22,14 @@ use fuser::{
 pub mod config;
 pub mod session;
 
+mod ioctl {
+    use nix::sys::ioctl::ioctl_num_type;
+
+    const MOUNT_S3_IOC_MAGIC: u8 = b'm';
+    pub(super) const MOUNT_S3_IOC_TYPE_SET_VERSION: ioctl_num_type =
+        nix::request_code_write!(MOUNT_S3_IOC_MAGIC, 0, size_of::<u8>() * 32);
+}
+
 /// A trait that can be implemented to log errors returned by fuse operations.
 pub trait ErrorLogger: std::fmt::Debug {
     /// Log an error returned by a fuse operation.
@@ -529,19 +537,32 @@ where
         fuse_unsupported!("bmap", reply);
     }
 
-    #[instrument(level="warn", skip_all, fields(req=_req.unique(), ino=ino, fh=fh, cmd=cmd))]
+    #[instrument(level="warn", skip_all, fields(req=req.unique(), ino=ino, fh=fh, cmd=cmd))]
     fn ioctl(
         &self,
-        _req: &Request<'_>,
+        req: &Request<'_>,
         ino: u64,
         fh: u64,
         _flags: u32,
         cmd: u32,
-        _in_data: &[u8],
+        in_data: &[u8],
         _out_size: u32,
         reply: ReplyIoctl,
     ) {
-        fuse_unsupported!("ioctl", reply, libc::ENOSYS, tracing::Level::DEBUG);
+        match cmd as u64 {
+            ioctl::MOUNT_S3_IOC_TYPE_SET_VERSION => {
+                let version = String::from_utf8_lossy(in_data);
+                match block_on(self.fs.set_inode_version(ino, Some(version.as_ref())).in_current_span()) {
+                    Ok(()) => {
+                        reply.ioctl(0, &[]);
+                    }
+                    Err(e) => fuse_error!("ioctl", reply, e, self, req),
+                }
+            }
+            _ => {
+                fuse_unsupported!("ioctl", reply, libc::ENOSYS, tracing::Level::DEBUG);
+            }
+        }
     }
 
     #[instrument(level="warn", skip_all, fields(req=_req.unique(), ino=ino, fh=fh, offset=offset, length=length))]

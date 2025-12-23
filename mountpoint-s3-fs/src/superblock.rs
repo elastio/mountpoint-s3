@@ -1124,6 +1124,10 @@ impl<OC: ObjectClient + Send + Sync + Clone> Metablock for Superblock<OC> {
             }
         }
     }
+
+    async fn set_inode_version(&self, ino: InodeNo, version: Option<&str>) -> Result<(), InodeError> {
+        self.inner.set_inode_version(ino, version).await
+    }
 }
 
 impl<OC: ObjectClient + Send + Sync> SuperblockInner<OC> {
@@ -1178,7 +1182,7 @@ impl<OC: ObjectClient + Send + Sync> SuperblockInner<OC> {
         let lookup = match lookup {
             Some(lookup) => lookup?,
             None => {
-                let remote = self.remote_lookup(parent_ino, name).await?;
+                let remote = self.remote_lookup(parent_ino, name, None).await?;
                 self.update_from_remote(parent_ino, name, remote)?
             }
         };
@@ -1244,6 +1248,7 @@ impl<OC: ObjectClient + Send + Sync> SuperblockInner<OC> {
         &self,
         parent_ino: InodeNo,
         name: ValidName<'_>,
+        version: Option<&str>,
     ) -> Result<Option<RemoteLookup>, InodeError> {
         let parent = self.get(parent_ino)?;
         let full_path: String = self
@@ -1282,7 +1287,7 @@ impl<OC: ObjectClient + Send + Sync> SuperblockInner<OC> {
         let head_object_params = HeadObjectParams::new();
         let mut file_lookup = self
             .client
-            .head_object(&self.s3_path.bucket, object_key, &head_object_params)
+            .head_object(&self.s3_path.bucket, object_key, version, &head_object_params)
             .fuse();
         let mut dir_lookup = self
             .client
@@ -1616,6 +1621,28 @@ impl<OC: ObjectClient + Send + Sync> SuperblockInner<OC> {
 
         Ok(inode)
     }
+
+    async fn set_inode_version(&self, ino: InodeNo, version: Option<&str>) -> Result<(), InodeError> {
+        let inode = self
+            .inodes
+            .read()
+            .unwrap()
+            .get_inode(&ino)
+            .ok_or(InodeError::InodeDoesNotExist(ino))?
+            .clone();
+        // Forcibly lookup the inode remotely to get its new stat that corresponds to the given version.
+        let lookup = self
+            .remote_lookup(inode.parent(), inode.name().try_into()?, version)
+            .await?
+            .ok_or(InodeError::InodeDoesNotExist(ino))?;
+
+        // Now update the inode in place.
+        let mut inodes_write = self.inodes.write().unwrap();
+        let (inode, _) = inodes_write.get_mut(&ino).ok_or(InodeError::InodeDoesNotExist(ino))?;
+        inode.set_version(version, lookup.stat)?;
+
+        Ok(())
+    }
 }
 
 /// Data from a remote object.
@@ -1651,7 +1678,11 @@ impl From<LookedUpInode> for InodeInformation {
 
 impl From<LookedUpInode> for Lookup {
     fn from(val: LookedUpInode) -> Self {
-        let location = Some(S3Location::new(val.path.clone(), val.inode.valid_key().clone()));
+        let location = Some(S3Location::new(
+            val.path.clone(),
+            val.inode.version(),
+            val.inode.valid_key().clone(),
+        ));
 
         Lookup::new_from_info_and_loc(val.into(), location)
     }
@@ -1937,7 +1968,7 @@ mod tests {
                     // Grab last modified time according to mock S3
                     let full_key = file.s3_location().expect("should have location").full_key();
                     let modified_time = client
-                        .head_object(&bucket, full_key.as_ref(), &HeadObjectParams::new())
+                        .head_object(&bucket, full_key.as_ref(), None, &HeadObjectParams::new())
                         .await
                         .expect("object should exist")
                         .last_modified;

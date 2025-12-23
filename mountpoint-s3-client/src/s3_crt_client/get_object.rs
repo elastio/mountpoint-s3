@@ -30,6 +30,7 @@ impl S3CrtClient {
         &self,
         bucket: &str,
         key: &str,
+        version: Option<&str>,
         params: &GetObjectParams,
     ) -> Result<S3GetObjectResponse, ObjectClientError<GetObjectError, S3RequestError>> {
         let requested_checksums = params.checksum_mode.as_ref() == Some(&ChecksumMode::Enabled);
@@ -71,7 +72,7 @@ impl S3CrtClient {
                     .map_err(S3RequestError::construction_failure)?;
             }
 
-            let key = format!("/{key}");
+            let key = Self::request_path(key, version);
             message
                 .set_request_path(key)
                 .map_err(S3RequestError::construction_failure)?;

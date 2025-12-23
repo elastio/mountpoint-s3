@@ -95,6 +95,7 @@ impl S3CrtClient {
         &self,
         bucket: &str,
         key: &str,
+        version: Option<&str>,
         params: &HeadObjectParams,
     ) -> ObjectClientResult<HeadObjectResult, HeadObjectError, S3RequestError> {
         let request = {
@@ -103,9 +104,8 @@ impl S3CrtClient {
                 .new_request_template("HEAD", bucket)
                 .map_err(S3RequestError::construction_failure)?;
 
-            let key = key.to_string();
             message
-                .set_request_path(format!("/{key}"))
+                .set_request_path(Self::request_path(key, version))
                 .map_err(S3RequestError::construction_failure)?;
 
             let bucket = bucket.to_owned();

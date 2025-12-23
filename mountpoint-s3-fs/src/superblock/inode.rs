@@ -52,6 +52,14 @@ impl Deref for InodeLockedForReading<'_> {
     }
 }
 
+/// Custom (not the latest one) S3 object version identifier.
+/// If specified in [`InodeInner`], all operations (metadata, reads) performed with this inode,
+/// will actually use this version ID when accessing S3 objects.
+#[derive(Debug, Clone)]
+pub struct S3ObjectVersion {
+    pub version: String,
+}
+
 #[derive(Debug)]
 struct InodeInner {
     // Immutable inode state -- any changes to these requires a new inode
@@ -99,6 +107,12 @@ impl Inode {
 
     pub fn valid_key(&self) -> &ValidKey {
         &self.inner.valid_key
+    }
+
+    pub fn version(&self) -> Option<String> {
+        self.get_inode_state()
+            .ok()
+            .and_then(|inode| inode.version.as_ref().map(|v| v.version.clone()))
     }
 
     /// return Inode State with read lock after checking whether the directory inode is deleted or not.
@@ -157,6 +171,7 @@ impl Inode {
                 stat: InodeStat::for_directory(mount_time, NEVER_EXPIRE_TTL),
                 write_status: WriteStatus::Remote,
                 kind_data: InodeKindData::default_for(InodeKind::Directory),
+                version: None,
             },
         )
     }
@@ -186,6 +201,7 @@ impl Inode {
             ),
             write_status: WriteStatus::Remote,
             kind_data: InodeKindData::default_for(InodeKind::File),
+            version: None,
         };
 
         Ok(Self::new(self.ino(), new_parent, new_key, prefix, new_inode_state))
@@ -217,6 +233,16 @@ impl Inode {
         }
     }
 
+    /// Set S3 object version and inode stat.
+    /// [None] means the most recent object version should be used.
+    pub fn set_version(&self, version: Option<&str>, stat: InodeStat) -> Result<(), InodeError> {
+        let mut mut_inode = self.get_mut_inode_state()?;
+        mut_inode.state.stat = stat;
+        mut_inode.state.version = version.map(|v| S3ObjectVersion { version: v.to_string() });
+
+        Ok(())
+    }
+
     fn compute_checksum(ino: InodeNo, prefix: &Prefix, key: &str) -> Crc32c {
         let mut hasher = crc32c::Hasher::new();
         hasher.update(ino.to_be_bytes().as_ref());
@@ -240,6 +266,7 @@ pub struct InodeState {
     pub stat: InodeStat,
     pub write_status: WriteStatus,
     pub kind_data: InodeKindData,
+    pub version: Option<S3ObjectVersion>,
 }
 
 impl InodeState {
@@ -248,6 +275,7 @@ impl InodeState {
             stat: stat.clone(),
             kind_data: InodeKindData::default_for(kind),
             write_status,
+            version: None,
         }
     }
 
@@ -341,6 +369,7 @@ mod tests {
                 write_status: WriteStatus::Remote,
                 stat: InodeStat::for_file(0, OffsetDateTime::now_utc(), None, None, None, Default::default()),
                 kind_data: InodeKindData::File {},
+                version: None,
             },
         );
         superblock.inner.inodes.write().unwrap().insert(ino, inode.clone(), 5);
@@ -483,6 +512,7 @@ mod tests {
                     ),
                     write_status: WriteStatus::Remote,
                     kind_data: InodeKindData::File {},
+                    version: None,
                 }),
             }),
         };
@@ -540,6 +570,7 @@ mod tests {
                     write_status: WriteStatus::LocalOpen,
                     stat: InodeStat::for_file(0, OffsetDateTime::UNIX_EPOCH, None, None, None, Default::default()),
                     kind_data: InodeKindData::File {},
+                    version: None,
                 }),
             }),
         };

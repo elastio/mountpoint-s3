@@ -78,6 +78,7 @@ pub trait ObjectClient {
         &self,
         bucket: &str,
         key: &str,
+        version: Option<&str>,
         params: &GetObjectParams,
     ) -> ObjectClientResult<Self::GetObjectResponse, GetObjectError, Self::ClientError>;
 
@@ -96,6 +97,7 @@ pub trait ObjectClient {
         &self,
         bucket: &str,
         key: &str,
+        version: Option<&str>,
         params: &HeadObjectParams,
     ) -> ObjectClientResult<HeadObjectResult, HeadObjectError, Self::ClientError>;
 

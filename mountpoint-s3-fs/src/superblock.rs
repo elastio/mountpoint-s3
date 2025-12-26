@@ -116,6 +116,9 @@ struct SuperblockInner<OC: ObjectClient + Send + Sync> {
     client: OC,
     dir_handles: RwLock<HashMap<u64, Arc<DirHandle>>>,
     next_dir_handle_id: AtomicU64,
+    /// Map of S3 objects (expressed by inodes in the superblock) to their version IDs.
+    /// If an object is not present in the map, the most recent version is assumed.
+    versioned_objects: Arc<RwLock<HashMap<Box<str>, Box<str>>>>,
 }
 
 /// Configuration for superblock operations
@@ -244,6 +247,7 @@ impl<OC: ObjectClient + Send + Sync> Superblock<OC> {
             client,
             next_dir_handle_id: AtomicU64::new(1),
             dir_handles: Default::default(),
+            versioned_objects: Arc::new(RwLock::new(HashMap::new())),
         };
         Self { inner: Arc::new(inner) }
     }
@@ -1000,6 +1004,7 @@ impl<OC: ObjectClient + Send + Sync + Clone> Metablock for Superblock<OC> {
                 return Ok(());
             }
             if is_readdirplus {
+                warn!(inode = ?next.inode, "remembering inode from readdirplus");
                 self.inner.remember(&next.inode)
             }
             dir_handle.next_offset();
@@ -1054,6 +1059,7 @@ impl<OC: ObjectClient + Send + Sync + Clone> Metablock for Superblock<OC> {
                     None,
                     None,
                     self.inner.config.cache_config.file_ttl,
+                    None,
                 ),
                 InodeKind::Directory => {
                     InodeStat::for_directory(self.inner.mount_time, self.inner.config.cache_config.dir_ttl)
@@ -1182,7 +1188,11 @@ impl<OC: ObjectClient + Send + Sync> SuperblockInner<OC> {
         let lookup = match lookup {
             Some(lookup) => lookup?,
             None => {
-                let remote = self.remote_lookup(parent_ino, name, None).await?;
+                let full_key = self.inode_full_key(parent_ino, &name)?;
+                let version = self.versioned_objects.read().unwrap().get(full_key.as_str()).cloned();
+                let remote = self
+                    .remote_lookup(parent_ino, name, version.as_ref().map(|v| v.as_ref()))
+                    .await?;
                 self.update_from_remote(parent_ino, name, remote)?
             }
         };
@@ -1300,8 +1310,8 @@ impl<OC: ObjectClient + Send + Sync> SuperblockInner<OC> {
             select_biased! {
                 result = file_lookup => {
                     match result {
-                        Ok(HeadObjectResult { size, last_modified, restore_status, etag, storage_class, .. }) => {
-                            let stat = InodeStat::for_file(size as usize, last_modified, Some(etag.into_inner().into_boxed_str()), storage_class.as_deref(), restore_status, self.config.cache_config.file_ttl);
+                        Ok(HeadObjectResult { size, last_modified, restore_status, etag, storage_class, version_id, .. }) => {
+                            let stat = InodeStat::for_file(size as usize, last_modified, Some(etag.into_inner().into_boxed_str()), storage_class.as_deref(), restore_status, self.config.cache_config.file_ttl, version_id.map(|v| v.into_boxed_str()));
                             file_state = Some(stat);
                         }
                         // If the object is not found, might be a directory, so keep going
@@ -1596,7 +1606,7 @@ impl<OC: ObjectClient + Send + Sync> SuperblockInner<OC> {
             .new_child(name, kind)
             .map_err(|_| InodeError::NotADirectory(parent.err()))?;
         let next_ino = self.next_ino.fetch_add(1, Ordering::SeqCst);
-        let inode = Inode::new(next_ino, parent.ino(), key, &self.s3_path.prefix, state);
+        let inode = Inode::new(next_ino, parent.ino(), key, &self.s3_path.prefix, state.clone());
         trace!(parent=?inode.parent(), name=?inode.name(), kind=?inode.kind(), new_ino=?inode.ino(), key=?inode.key(), "created new inode");
 
         match &mut parent_locked.kind_data {
@@ -1637,11 +1647,37 @@ impl<OC: ObjectClient + Send + Sync> SuperblockInner<OC> {
             .ok_or(InodeError::InodeDoesNotExist(ino))?;
 
         // Now update the inode in place.
-        let mut inodes_write = self.inodes.write().unwrap();
-        let (inode, _) = inodes_write.get_mut(&ino).ok_or(InodeError::InodeDoesNotExist(ino))?;
         inode.set_version(version, lookup.stat)?;
 
+        // Update the map of versioned objects.
+        let full_key = self.inode_full_key(inode.parent(), inode.key())?;
+        let mut versioned_objects = self.versioned_objects.write().unwrap();
+        if let Some(version) = version {
+            trace!(%full_key, %version, "set versioned object in superblock");
+            versioned_objects.insert(full_key.into(), version.into());
+        } else {
+            trace!(%full_key, "removed versioned object from superblock");
+            versioned_objects.remove(full_key.as_str());
+        }
+
         Ok(())
+    }
+
+    /// Return a full key that does not contain the trailing '/'.
+    fn inode_full_key(&self, parent_ino: InodeNo, key: &str) -> Result<String, InodeError> {
+        let parent_ino = self
+            .inodes
+            .read()
+            .unwrap()
+            .get_inode(&parent_ino)
+            .ok_or(InodeError::InodeDoesNotExist(parent_ino))?
+            .clone();
+        let full_path: String = self
+            .full_key_for_inode(&parent_ino)
+            .new_child(key.try_into()?, InodeKind::Directory)
+            .map_err(|_| InodeError::NotADirectory(parent_ino.err()))
+            .map(|p| p.into())?;
+        Ok(full_path[..(full_path.len() - 1)].to_string())
     }
 }
 
@@ -2917,7 +2953,7 @@ mod tests {
     #[test]
     fn test_inodestat_constructors() {
         let ts = OffsetDateTime::UNIX_EPOCH + Duration::days(90);
-        let file_inodestat = InodeStat::for_file(128, ts, None, None, None, Default::default());
+        let file_inodestat = InodeStat::for_file(128, ts, None, None, None, Default::default(), None);
         assert_eq!(file_inodestat.size, 128);
         assert_eq!(file_inodestat.atime, ts);
         assert_eq!(file_inodestat.ctime, ts);

@@ -57,7 +57,7 @@ impl Deref for InodeLockedForReading<'_> {
 /// will actually use this version ID when accessing S3 objects.
 #[derive(Debug, Clone)]
 pub struct S3ObjectVersion {
-    pub version: String,
+    pub version: Box<str>,
 }
 
 #[derive(Debug)]
@@ -112,7 +112,7 @@ impl Inode {
     pub fn version(&self) -> Option<String> {
         self.get_inode_state()
             .ok()
-            .and_then(|inode| inode.version.as_ref().map(|v| v.version.clone()))
+            .and_then(|inode| inode.version.as_ref().map(|v| v.version.to_string()))
     }
 
     /// return Inode State with read lock after checking whether the directory inode is deleted or not.
@@ -198,6 +198,7 @@ impl Inode {
                 None,
                 None,
                 new_validity,
+                old_inode_state.stat.version_id.clone(),
             ),
             write_status: WriteStatus::Remote,
             kind_data: InodeKindData::default_for(InodeKind::File),
@@ -238,7 +239,9 @@ impl Inode {
     pub fn set_version(&self, version: Option<&str>, stat: InodeStat) -> Result<(), InodeError> {
         let mut mut_inode = self.get_mut_inode_state()?;
         mut_inode.state.stat = stat;
-        mut_inode.state.version = version.map(|v| S3ObjectVersion { version: v.to_string() });
+        mut_inode.state.version = version.map(|version| S3ObjectVersion {
+            version: version.into(),
+        });
 
         Ok(())
     }
@@ -275,7 +278,7 @@ impl InodeState {
             stat: stat.clone(),
             kind_data: InodeKindData::default_for(kind),
             write_status,
-            version: None,
+            version: stat.version_id.as_ref().map(|v| S3ObjectVersion { version: v.clone() }),
         }
     }
 
@@ -367,7 +370,7 @@ mod tests {
             &superblock.inner.s3_path.prefix,
             InodeState {
                 write_status: WriteStatus::Remote,
-                stat: InodeStat::for_file(0, OffsetDateTime::now_utc(), None, None, None, Default::default()),
+                stat: InodeStat::for_file(0, OffsetDateTime::now_utc(), None, None, None, Default::default(), None),
                 kind_data: InodeKindData::File {},
                 version: None,
             },
@@ -509,6 +512,7 @@ mod tests {
                         None,
                         None,
                         NEVER_EXPIRE_TTL,
+                        None,
                     ),
                     write_status: WriteStatus::Remote,
                     kind_data: InodeKindData::File {},
@@ -568,7 +572,15 @@ mod tests {
                 checksum,
                 sync: RwLock::new(InodeState {
                     write_status: WriteStatus::LocalOpen,
-                    stat: InodeStat::for_file(0, OffsetDateTime::UNIX_EPOCH, None, None, None, Default::default()),
+                    stat: InodeStat::for_file(
+                        0,
+                        OffsetDateTime::UNIX_EPOCH,
+                        None,
+                        None,
+                        None,
+                        Default::default(),
+                        None,
+                    ),
                     kind_data: InodeKindData::File {},
                     version: None,
                 }),

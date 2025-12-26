@@ -319,14 +319,6 @@ impl S3CrtClient {
     pub fn event_loop_group(&self) -> EventLoopGroup {
         self.inner.event_loop_group.clone()
     }
-
-    fn request_path(key: &str, version: Option<&str>) -> String {
-        if let Some(version) = version {
-            format!("/{key}?versionId={version}")
-        } else {
-            format!("/{key}")
-        }
-    }
 }
 
 #[derive(Debug)]

@@ -1028,6 +1028,7 @@ impl ObjectClient for MockClient {
                 checksum,
                 sse_type: None,
                 sse_kms_key_id: None,
+                version_id: None,
             })
         } else {
             Err(ObjectClientError::ServiceError(HeadObjectError::NotFound))

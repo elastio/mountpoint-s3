@@ -788,6 +788,8 @@ where
     }
 
     pub async fn set_inode_version(&self, ino: InodeNo, version: Option<&str>) -> Result<(), Error> {
+        trace!(inode = ino, ?version, "fs:set_inode_version");
+
         let mut handles_write = self.file_handles.write().await;
 
         // First, update the inode itself.
@@ -802,6 +804,7 @@ where
                     "Cannot set inode version while file is open for writing."
                 ));
             }
+            trace!(pid = handle.open_pid, "Recreating read handle with new inode version.");
             // Recreate the read handle with the new version.
             let lookup = self.metablock.getattr(ino, false).await?;
             let handle_state = FileHandleState::new_read_handle(&lookup, self).await?;
@@ -813,6 +816,8 @@ where
             });
             *entry.get_mut() = handle;
         }
+
+        trace!("fs:set_inode_version complete");
 
         Ok(())
     }

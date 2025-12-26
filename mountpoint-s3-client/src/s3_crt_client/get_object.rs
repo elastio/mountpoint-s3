@@ -21,7 +21,10 @@ use crate::object_client::{
     ObjectChecksumError, ObjectClientError, ObjectClientResult, ObjectMetadata,
 };
 
-use super::{CancellingMetaRequest, ResponseHeadersError, S3CrtClient, S3Operation, S3RequestError, parse_checksum};
+use super::{
+    CancellingMetaRequest, QueryFragment, ResponseHeadersError, S3CrtClient, S3Operation, S3RequestError,
+    parse_checksum,
+};
 
 impl S3CrtClient {
     /// Create and begin a new GetObject request. The returned [S3GetObjectResponse] is a [Stream] of
@@ -72,9 +75,14 @@ impl S3CrtClient {
                     .map_err(S3RequestError::construction_failure)?;
             }
 
-            let key = Self::request_path(key, version);
+            let query = if let Some(version) = version {
+                QueryFragment::Query(&[("versionId", version)])
+            } else {
+                Default::default()
+            };
+
             message
-                .set_request_path(key)
+                .set_request_path_and_query(format!("/{key}"), query)
                 .map_err(S3RequestError::construction_failure)?;
 
             let mut options = message.into_options(S3Operation::GetObject);

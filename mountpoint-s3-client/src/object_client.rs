@@ -352,6 +352,9 @@ pub struct HeadObjectResult {
 
     /// Server-side encryption KMS key ID that was used to store the object.
     pub sse_kms_key_id: Option<String>,
+
+    /// Version ID of the object if versioning is enabled on the bucket.
+    pub version_id: Option<String>,
 }
 
 /// Errors returned by a [`head_object`](ObjectClient::head_object) request

@@ -22,14 +22,6 @@ use fuser::{
 pub mod config;
 pub mod session;
 
-mod ioctl {
-    use nix::sys::ioctl::ioctl_num_type;
-
-    const MOUNT_S3_IOC_MAGIC: u8 = b'm';
-    pub(super) const MOUNT_S3_IOC_TYPE_SET_VERSION: ioctl_num_type =
-        nix::request_code_write!(MOUNT_S3_IOC_MAGIC, 0, size_of::<u8>() * 32);
-}
-
 /// A trait that can be implemented to log errors returned by fuse operations.
 pub trait ErrorLogger: std::fmt::Debug {
     /// Log an error returned by a fuse operation.
@@ -537,12 +529,12 @@ where
         fuse_unsupported!("bmap", reply);
     }
 
-    #[instrument(level="warn", skip_all, fields(req=req.unique(), ino=ino, fh=fh, cmd=cmd))]
+    #[instrument(level="warn", skip_all, fields(req=req.unique(), ino=ino, fh=_fh, cmd=cmd))]
     fn ioctl(
         &self,
         req: &Request<'_>,
         ino: u64,
-        fh: u64,
+        _fh: u64,
         _flags: u32,
         cmd: u32,
         in_data: &[u8],
@@ -550,9 +542,9 @@ where
         reply: ReplyIoctl,
     ) {
         match cmd as u64 {
-            ioctl::MOUNT_S3_IOC_TYPE_SET_VERSION => {
-                let version = String::from_utf8_lossy(in_data);
-                match block_on(self.fs.set_inode_version(ino, Some(version.as_ref())).in_current_span()) {
+            mountpoint_s3_ioctl::MOUNT_S3_IOC_TYPE_SET_VERSION => {
+                let version = (!in_data.iter().all(|b| *b == 0)).then(|| String::from_utf8_lossy(in_data));
+                match block_on(self.fs.set_inode_version(ino, version.as_deref()).in_current_span()) {
                     Ok(()) => {
                         reply.ioctl(0, &[]);
                     }

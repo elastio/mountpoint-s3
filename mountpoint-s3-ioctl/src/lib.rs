@@ -17,7 +17,7 @@ impl<T: AsRef<str>> From<T> for S3ObjectVersionBuffer {
 
 const MOUNT_S3_IOC_MAGIC: u8 = b'm';
 
-/// IOCTL to set the S3 object version Iid for an inode. Once set,
+/// IOCTL to set the S3 object version ID for an inode. Once set,
 /// this version id will be used for all S3 operations on the inode.
 pub const MOUNT_S3_IOC_TYPE_SET_VERSION: ioctl_num_type =
     request_code_write!(MOUNT_S3_IOC_MAGIC, 0, size_of::<S3ObjectVersionBuffer>());

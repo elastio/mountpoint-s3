@@ -1606,7 +1606,7 @@ impl<OC: ObjectClient + Send + Sync> SuperblockInner<OC> {
             .new_child(name, kind)
             .map_err(|_| InodeError::NotADirectory(parent.err()))?;
         let next_ino = self.next_ino.fetch_add(1, Ordering::SeqCst);
-        let inode = Inode::new(next_ino, parent.ino(), key, &self.s3_path.prefix, state.clone());
+        let inode = Inode::new(next_ino, parent.ino(), key, &self.s3_path.prefix, state);
         trace!(parent=?inode.parent(), name=?inode.name(), kind=?inode.kind(), new_ino=?inode.ino(), key=?inode.key(), "created new inode");
 
         match &mut parent_locked.kind_data {

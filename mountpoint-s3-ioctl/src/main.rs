@@ -27,10 +27,16 @@ fn main() {
 }
 
 fn set_inode_version(file: &str, version: &str) {
-    let fd = std::fs::File::open(file).unwrap();
+    let fd = std::fs::File::open(file).unwrap_or_else(|e| {
+        eprintln!("Failed to open file '{}': {}", file, e);
+        std::process::exit(1);
+    });
     let version_buffer = S3ObjectVersionBuffer::from(version);
 
-    unsafe {
-        ioctl_mount_s3_set_inode_version(fd.as_raw_fd(), std::slice::from_ref(&version_buffer)).unwrap();
+    let result = unsafe { ioctl_mount_s3_set_inode_version(fd.as_raw_fd(), std::slice::from_ref(&version_buffer)) };
+
+    if let Err(e) = result {
+        eprintln!("Failed to set S3 object version for file '{}': {}", file, e);
+        std::process::exit(1);
     }
 }

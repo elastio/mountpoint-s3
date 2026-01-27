@@ -1226,7 +1226,7 @@ impl<OC: ObjectClient + Send + Sync + Clone> Metablock for Superblock<OC> {
                 return Ok(());
             }
             if is_readdirplus {
-                warn!(inode = ?next.inode, "remembering inode from readdirplus");
+                trace!(inode = ?next.inode, "remembering inode from readdirplus");
                 self.inner.remember(&next.inode)
             }
             dir_handle.next_offset();

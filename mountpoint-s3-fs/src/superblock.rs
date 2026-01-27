@@ -1943,12 +1943,11 @@ impl<OC: ObjectClient + Send + Sync> SuperblockInner<OC> {
     }
 
     fn get_inode_version(&self, ino: &Inode) -> Result<Option<String>, InodeError> {
-        let full_key = self.inode_full_key(ino.parent(), ino.key())?;
         Ok(self
             .versioned_objects
             .read()
             .unwrap()
-            .get(full_key.as_str())
+            .get(ino.valid_key().as_ref())
             .map(|v| v.to_string()))
     }
 }

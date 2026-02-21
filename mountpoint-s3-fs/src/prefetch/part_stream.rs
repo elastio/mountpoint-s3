@@ -430,7 +430,7 @@ fn read_from_request<'a, Client: ObjectClient + 'a>(
 ) -> impl Stream<Item = RequestReaderOutput<Client::ClientError>> + 'a {
     try_stream! {
         let mut request = client
-            .get_object(&bucket, id.key(), &GetObjectParams::new().range(Some(request_range.clone())).if_match(Some(id.etag().clone())))
+            .get_object(&bucket, id.key(), id.version(), &GetObjectParams::new().range(Some(request_range.clone())).if_match(Some(id.etag().clone())))
             .await
             .inspect_err(|e| error!(key=id.key(), error=?e, "GetObject request failed"))
             .map_err(|err| PrefetchReadError::get_request_failed(err, &bucket, id.key()))?;

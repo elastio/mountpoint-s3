@@ -333,6 +333,7 @@ where
         .head_object(
             &params.bucket,
             &params.key,
+            None,
             &HeadObjectParams::new().checksum_mode(Some(ChecksumMode::Enabled)),
         )
         .await?;
@@ -606,7 +607,7 @@ mod tests {
 
         // Verify content of the object
         let get_request = client
-            .get_object(bucket, key, &GetObjectParams::default())
+            .get_object(bucket, key, None, &GetObjectParams::default())
             .await
             .expect("get_object failed");
         let actual = get_request.collect().await.expect("failed to collect body");
@@ -672,7 +673,7 @@ mod tests {
 
         // Verify content of the object
         let get_request = client
-            .get_object(bucket, key, &GetObjectParams::default())
+            .get_object(bucket, key, None, &GetObjectParams::default())
             .await
             .expect("get_object failed");
         let actual = get_request.collect().await.expect("failed to collect body");
@@ -741,6 +742,7 @@ mod tests {
             .get_object(
                 bucket,
                 key,
+                None,
                 &GetObjectParams::default().checksum_mode(Some(ChecksumMode::Enabled)),
             )
             .await
@@ -786,7 +788,7 @@ mod tests {
 
         // Verify content of the object
         let get_request = client
-            .get_object(bucket, key, &GetObjectParams::default())
+            .get_object(bucket, key, None, &GetObjectParams::default())
             .await
             .expect("get_object failed");
         let actual = get_request.collect().await.expect("failed to collect body");
@@ -868,7 +870,7 @@ mod tests {
 
         // Verify that object is partially appended from the first request
         let get_request = client
-            .get_object(bucket, key, &GetObjectParams::default())
+            .get_object(bucket, key, None, &GetObjectParams::default())
             .await
             .expect("get_object failed");
         let actual = get_request.collect().await.expect("failed to collect body");
@@ -992,7 +994,7 @@ mod tests {
 
         // Verify that object is partially appended from the first request
         let get_request = client
-            .get_object(bucket, key, &GetObjectParams::default())
+            .get_object(bucket, key, None, &GetObjectParams::default())
             .await
             .expect("get_object failed");
         let actual = get_request.collect().await.expect("failed to collect body");
@@ -1179,7 +1181,7 @@ mod tests {
 
         // Verify content of the object
         let get_request = client
-            .get_object(bucket, key, &GetObjectParams::default())
+            .get_object(bucket, key, None, &GetObjectParams::default())
             .await
             .expect("get_object failed");
         let actual = get_request.collect().await.expect("failed to collect body");
@@ -1228,7 +1230,7 @@ mod tests {
 
         // Verify content of the object
         let get_request = client
-            .get_object(bucket, key, &GetObjectParams::default())
+            .get_object(bucket, key, None, &GetObjectParams::default())
             .await
             .expect("get_object failed");
         let actual = get_request.collect().await.expect("failed to collect body");

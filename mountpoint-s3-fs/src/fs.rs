@@ -802,9 +802,10 @@ where
             }
             trace!(pid = handle.open_pid, "Recreating read handle with new inode version.");
             // Recreate the read handle with the new version.
+            let fh = self.next_handle();
             let lookup = self.metablock.getattr(ino, false).await?;
             let new_handle = NewHandle::read(lookup.clone());
-            let handle_state = FileHandleState::new(&new_handle, OpenFlags::empty(), self).await?;
+            let handle_state = FileHandleState::new(fh, &new_handle, OpenFlags::empty(), self).await?;
             let handle = Arc::new(FileHandle {
                 ino,
                 open_pid: handle.open_pid,

@@ -152,7 +152,7 @@ impl Executor {
         let object_key = &config.object_key;
 
         let head_result = client
-            .head_object(bucket, object_key, &HeadObjectParams::new())
+            .head_object(bucket, object_key, None, &HeadObjectParams::new())
             .await
             .map_err(|e| ExecutionError::S3Error(format!("HeadObject failed: {}", e)))?;
 
@@ -225,7 +225,7 @@ impl Executor {
         let object_key = &config.object_key;
 
         let head_result = client
-            .head_object(bucket, object_key, &HeadObjectParams::new())
+            .head_object(bucket, object_key, None, &HeadObjectParams::new())
             .await
             .map_err(|e| ExecutionError::S3Error(format!("HeadObject failed: {}", e)))?;
 

@@ -54,7 +54,7 @@ pub async fn generate_test_objects(
         // Skip generation if object already exists with correct size
         match executor
             .client
-            .head_object(&job.bucket, &job.object_key, &HeadObjectParams::new())
+            .head_object(&job.bucket, &job.object_key, None, &HeadObjectParams::new())
             .await
         {
             Ok(head_result) => {
